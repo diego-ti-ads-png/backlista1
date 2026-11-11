@@ -8,7 +8,7 @@ const { createClient } = require("@supabase/supabase-js");
 const app = express();
 
 // ==========================================
-// CONFIGURAÇÕES DO SERVIDOR
+// 1. CONFIGURAÇÕES DO SERVIDOR
 // ==========================================
 
 const PORT = process.env.PORT || 3000;
@@ -19,35 +19,37 @@ app.use(cors({
     allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
-app.use(express.json({ limit: "10kb" }));
+app.use(express.json());
 
 // ==========================================
-// CONEXÃO COM SUPABASE
+// 2. CONEXÃO COM SUPABASE
 // ==========================================
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY;
 
-if (!SUPABASE_URL || !SUPABASE_KEY) {
-    throw new Error(
-        "ERRO: Configure SUPABASE_URL e SUPABASE_PUBLISHABLE_KEY."
+let supabase = null;
+
+function conectarSupabase() {
+
+    if (supabase) {
+        return supabase;
+    }
+
+    if (!SUPABASE_URL || !SUPABASE_KEY) {
+        throw new Error("Variáveis do Supabase não configuradas.");
+    }
+
+    supabase = createClient(
+        SUPABASE_URL,
+        SUPABASE_KEY
     );
+
+    return supabase;
 }
 
-const supabase = createClient(
-    SUPABASE_URL,
-    SUPABASE_KEY,
-    {
-        auth: {
-            autoRefreshToken: false,
-            persistSession: false,
-            detectSessionInUrl: false
-        }
-    }
-);
-
 // ==========================================
-// FUNÇÃO DE VALIDAÇÃO DE ID
+// 3. VALIDAÇÃO DE ID
 // ==========================================
 
 function validarId(id) {
@@ -61,14 +63,16 @@ function validarId(id) {
 }
 
 // ==========================================
-// ROTA PRINCIPAL
+// 4. ROTA INICIAL
 // ==========================================
 
 app.get("/", (req, res) => {
-    res.status(200).json({
+
+    res.json({
         mensagem: "API Lista de Tarefas funcionando!",
         status: "online",
         tecnologia: "Node.js + Express + Supabase",
+
         endpoints: {
             listar: "GET /tarefas",
             buscar: "GET /tarefas/:id",
@@ -77,15 +81,17 @@ app.get("/", (req, res) => {
             excluir: "DELETE /tarefas/:id"
         }
     });
+
 });
 
 // ==========================================
-// CRUD - CREATE
-// CADASTRAR TAREFA
+// 5. CREATE - CADASTRAR TAREFA
 // ==========================================
 
 app.post("/tarefas", async (req, res) => {
+
     try {
+
         const { titulo, descricao, concluida } = req.body || {};
 
         if (
@@ -117,13 +123,17 @@ app.post("/tarefas", async (req, res) => {
             });
         }
 
-        const { data, error } = await supabase
+        const db = conectarSupabase();
+
+        const { data, error } = await db
             .from("tarefas")
-            .insert({
-                titulo: titulo.trim(),
-                descricao: descricao?.trim() || null,
-                concluida: concluida ?? false
-            })
+            .insert([
+                {
+                    titulo: titulo.trim(),
+                    descricao: descricao?.trim() || null,
+                    concluida: concluida ?? false
+                }
+            ])
             .select()
             .single();
 
@@ -135,22 +145,28 @@ app.post("/tarefas", async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Erro ao cadastrar tarefa:", error);
+
+        console.error("Erro ao cadastrar:", error);
 
         return res.status(500).json({
             erro: "Não foi possível cadastrar a tarefa."
         });
+
     }
+
 });
 
 // ==========================================
-// CRUD - READ
-// LISTAR TODAS AS TAREFAS
+// 6. READ - LISTAR TODAS AS TAREFAS
 // ==========================================
 
 app.get("/tarefas", async (req, res) => {
+
     try {
-        const { data, error } = await supabase
+
+        const db = conectarSupabase();
+
+        const { data, error } = await db
             .from("tarefas")
             .select("*")
             .order("created_at", { ascending: false });
@@ -163,20 +179,25 @@ app.get("/tarefas", async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Erro ao listar tarefas:", error);
+
+        console.error("Erro ao listar:", error);
 
         return res.status(500).json({
             erro: "Não foi possível consultar as tarefas."
         });
+
     }
+
 });
 
 // ==========================================
-// READ - BUSCAR TAREFA POR ID
+// 7. READ - BUSCAR TAREFA POR ID
 // ==========================================
 
 app.get("/tarefas/:id", async (req, res) => {
+
     try {
+
         const id = validarId(req.params.id);
 
         if (!id) {
@@ -185,7 +206,9 @@ app.get("/tarefas/:id", async (req, res) => {
             });
         }
 
-        const { data, error } = await supabase
+        const db = conectarSupabase();
+
+        const { data, error } = await db
             .from("tarefas")
             .select("*")
             .eq("id", id)
@@ -202,21 +225,25 @@ app.get("/tarefas/:id", async (req, res) => {
         return res.status(200).json(data);
 
     } catch (error) {
-        console.error("Erro ao buscar tarefa:", error);
+
+        console.error("Erro ao buscar:", error);
 
         return res.status(500).json({
             erro: "Não foi possível buscar a tarefa."
         });
+
     }
+
 });
 
 // ==========================================
-// CRUD - UPDATE
-// ATUALIZAR TAREFA
+// 8. UPDATE - ATUALIZAR TAREFA
 // ==========================================
 
 app.put("/tarefas/:id", async (req, res) => {
+
     try {
+
         const id = validarId(req.params.id);
 
         if (!id) {
@@ -255,7 +282,7 @@ app.put("/tarefas/:id", async (req, res) => {
             )
         ) {
             return res.status(400).json({
-                erro: "Título inválido. Informe até 150 caracteres."
+                erro: "Título inválido."
             });
         }
 
@@ -265,7 +292,7 @@ app.put("/tarefas/:id", async (req, res) => {
             typeof descricao !== "string"
         ) {
             return res.status(400).json({
-                erro: "A descrição deve ser um texto."
+                erro: "Descrição inválida."
             });
         }
 
@@ -292,7 +319,9 @@ app.put("/tarefas/:id", async (req, res) => {
             atualizacao.concluida = concluida;
         }
 
-        const { data, error } = await supabase
+        const db = conectarSupabase();
+
+        const { data, error } = await db
             .from("tarefas")
             .update(atualizacao)
             .eq("id", id)
@@ -313,21 +342,25 @@ app.put("/tarefas/:id", async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Erro ao atualizar tarefa:", error);
+
+        console.error("Erro ao atualizar:", error);
 
         return res.status(500).json({
             erro: "Não foi possível atualizar a tarefa."
         });
+
     }
+
 });
 
 // ==========================================
-// CRUD - DELETE
-// EXCLUIR TAREFA
+// 9. DELETE - EXCLUIR TAREFA
 // ==========================================
 
 app.delete("/tarefas/:id", async (req, res) => {
+
     try {
+
         const id = validarId(req.params.id);
 
         if (!id) {
@@ -336,7 +369,9 @@ app.delete("/tarefas/:id", async (req, res) => {
             });
         }
 
-        const { data, error } = await supabase
+        const db = conectarSupabase();
+
+        const { data, error } = await db
             .from("tarefas")
             .delete()
             .eq("id", id)
@@ -357,36 +392,39 @@ app.delete("/tarefas/:id", async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Erro ao excluir tarefa:", error);
+
+        console.error("Erro ao excluir:", error);
 
         return res.status(500).json({
             erro: "Não foi possível excluir a tarefa."
         });
+
     }
+
 });
 
 // ==========================================
-// ROTA NÃO ENCONTRADA
+// 10. ROTA NÃO ENCONTRADA
 // ==========================================
 
 app.use((req, res) => {
-    return res.status(404).json({
+
+    res.status(404).json({
         erro: "Rota não encontrada.",
         caminho: req.originalUrl
     });
+
 });
 
 // ==========================================
-// TRATAMENTO DE ERROS
+// 11. TRATAMENTO DE ERROS
 // ==========================================
 
 app.use((err, req, res, next) => {
+
     console.error("Erro interno:", err);
 
-    if (
-        err instanceof SyntaxError &&
-        err.status === 400
-    ) {
+    if (err instanceof SyntaxError && err.status === 400) {
         return res.status(400).json({
             erro: "O JSON enviado é inválido."
         });
@@ -395,30 +433,34 @@ app.use((err, req, res, next) => {
     return res.status(500).json({
         erro: "Erro interno do servidor."
     });
+
 });
 
 // ==========================================
-// EXECUÇÃO LOCAL E VERCEL
+// 12. EXECUÇÃO LOCAL
 // ==========================================
 
-// Quando executar npm start localmente,
-// inicia o servidor na porta configurada.
-//
-// Na Vercel, não inicia app.listen().
-// Apenas exporta a aplicação Express.
+// npm start inicia o servidor local.
+// Na Vercel, a plataforma gerencia as requisições.
 
-if (require.main === module) {
+if (require.main === module && process.env.VERCEL !== "1") {
 
     app.listen(PORT, () => {
+
         console.log("-----------------------------------");
         console.log(" API LISTA DE TAREFAS INICIADA");
         console.log("-----------------------------------");
-        console.log(` Servidor: http://localhost:${PORT}`);
-        console.log(` API: http://localhost:${PORT}/tarefas`);
+        console.log(`Servidor: http://localhost:${PORT}`);
+        console.log(`API: http://localhost:${PORT}/tarefas`);
         console.log("-----------------------------------");
+
     });
 
 }
 
-// Exportação para a Vercel
+// ==========================================
+// 13. EXPORTAÇÃO PARA VERCEL
+// ==========================================
+
 module.exports = app;
+
